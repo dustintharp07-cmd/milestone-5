@@ -1,0 +1,41 @@
+project:
+  type: website
+  output-dir: _site
+  resources:
+    - data/nhanes_sleep_grip_primary_3014.csv
+    - data/nhanes_sleep_grip_60plus_3632.csv
+
+website:
+  title: "Sleep & Physical Strength in Older Adults"
+  navbar:
+    background: "#07111f"
+    foreground: "#e6f1ff"
+    pinned: true
+    left:
+      - text: "Overview"
+        href: index.qmd#overview
+      - text: "Interactive Explorer"
+        href: index.qmd#explorer
+      - text: "Sleep Categories"
+        href: index.qmd#categories
+      - text: "Age & Sex Patterns"
+        href: index.qmd#demographics
+      - text: "Findings & Methodology"
+        href: index.qmd#findings
+      - text: "Citations"
+        href: index.qmd#citations
+
+format:
+  html:
+    theme: darkly
+    css: styles.css
+    toc: false
+    page-layout: full
+    smooth-scroll: true
+    code-copy: false
+    anchor-sections: true
+
+execute:
+  echo: false
+  warning: false
+  message: false

@@ -1,0 +1,1052 @@
+---
+title: "Sleep & Physical Strength: Exploring the Relationship Between Sleep Duration and Grip Strength in Older Adults"
+format:
+  html:
+    page-layout: full
+---
+
+```{r}
+#| label: setup-and-data
+#| include: false
+
+library(dplyr)
+library(readr)
+library(plotly)
+library(jsonlite)
+library(htmltools)
+
+# Load verified primary sample (n = 3,014) and full 60+ eligible sample (n = 3,632)
+df_primary <- read_csv("data/nhanes_sleep_grip_primary_3014.csv", show_col_types = FALSE)
+df_60plus  <- read_csv("data/nhanes_sleep_grip_60plus_3632.csv", show_col_types = FALSE)
+
+# Verify exact sample sizes
+stopifnot(nrow(df_60plus) == 3632L)
+stopifnot(nrow(df_primary) == 3014L)
+stopifnot(sum(df_primary$completed_all_6_trials) == 2997L)
+
+# Export compact JSON payload for client-side interactive filtering & recalculation
+dashboard_records <- df_primary |>
+  transmute(
+    seqn = SEQN,
+    cycle = cycle,
+    age = RIDAGEYR,
+    age_group = age_group,
+    sex = sex,
+    sleep = sleep_hours,
+    grip = round(combined_grip_kg, 2),
+    max_hand = round(max_single_hand_kg, 2),
+    bmi = round(bmi, 1),
+    bmi_cat = bmi_category,
+    activity = mod_vig_activity,
+    wt4yr = round(WTMEC4YR, 2),
+    psu = SDMVPSU,
+    strata = SDMVSTRA,
+    all6 = completed_all_6_trials
+  )
+
+json_payload <- toJSON(dashboard_records, dataframe = "rows", auto_unbox = TRUE)
+```
+
+```{r}
+#| label: load-plotly-dependency
+#| include: false
+
+# Attach Plotly HTML widget dependencies cleanly so Plotly.js is available globally
+ invisible_plotly_dep <- plot_ly(type = "scatter", mode = "markers")
+```
+
+<div style="display:none;">
+```{r}
+#| label: attach-plotly-widget
+invisible_plotly_dep
+```
+</div>
+
+```{=html}
+<div class="dashboard-wrapper">
+
+  <!-- ======================= 1. HERO & RESEARCH QUESTION ======================= -->
+  <section id="overview" class="hero-banner">
+    <div class="hero-badge-row">
+      <span class="hero-badge">CDC NHANES 2011–2014</span>
+      <span class="hero-badge cyan">N = 3,014 Older Adults (Aged 60–80+)</span>
+      <span class="hero-badge purple">Objective Dynamometer Grip Strength</span>
+    </div>
+    <h1 class="hero-title">Sleep &amp; Physical Strength: Exploring the Relationship Between Sleep Duration and Grip Strength in Older Adults</h1>
+    <p class="hero-subtitle">
+      An interactive epidemiological and sports-science dashboard investigating how self-reported weekday/workday sleep duration (<code>SLD010H</code>) relates to objectively measured combined handgrip strength (<code>MGDCGSZ</code>) among U.S. older adults across the 2011–2012 and 2013–2014 National Health and Nutrition Examination Survey cycles.
+    </p>
+    <div class="research-question-box">
+      <span class="rq-label">Primary Research Question</span>
+      <p>How does self-reported sleep duration relate to measured physical strength (combined handgrip strength in kilograms) among adults aged 60 and older in the United States, and how do these patterns vary across sleep categories, age groups, and sex?</p>
+    </div>
+  </section>
+
+  <!-- ======================= 2. DATASET OVERVIEW & SAMPLE FLOW ======================= -->
+  <section class="section-block">
+    <span class="section-kicker">Section 1 · Verified Cohort Architecture</span>
+    <h2 class="section-heading">Dataset Overview &amp; Participant Accounting</h2>
+    <p class="section-lead">
+      Every data point in this dashboard represents a real, unique human participant examined by the CDC National Center for Health Statistics (NCHS). Individual dynamometer trials (up to 6 trials per person across left and right hands) are summarized into each participant's single combined grip-strength score (<code>MGDCGSZ</code>) so repeated hand trials are never treated as independent participants.
+    </p>
+
+    <div class="info-grid-3">
+      <div class="info-card">
+        <span class="card-kicker">Total Survey Screening</span>
+        <h3>19,931 Total NHANES Participants</h3>
+        <p>
+          Combined across the <strong>2011–2012 (Cycle G: 9,756)</strong> and <strong>2013–2014 (Cycle H: 10,175)</strong> cycles with zero duplicate respondent sequence numbers (<code>SEQN</code>). Restricting to adults aged <strong>60 years and older (<code>RIDAGEYR &ge; 60</code>)</strong> yields exactly <strong>3,632 eligible older adults</strong> (1,791 in 2011–2012; 1,841 in 2013–2014).
+        </p>
+      </div>
+      <div class="info-card">
+        <span class="card-kicker">Primary Analytical Sample</span>
+        <h3>3,014 Paired Older Adults</h3>
+        <p>
+          Among the 3,632 older adults, <strong>3,620</strong> provided valid weekday sleep duration (2–12 hours, after excluding 1 Refused [<code>77</code>], 6 Don't Know [<code>99</code>], and 5 missing values), and <strong>3,014 unique participants</strong> completed bilateral Mobile Examination Center (MEC) handgrip testing with both valid sleep duration and combined grip strength (<code>MGDCGSZ</code>).
+        </p>
+      </div>
+      <div class="info-card purple-accent">
+        <span class="card-kicker">Complete-Case 6-Trial Sample</span>
+        <h3>2,997 Six-Trial Completers</h3>
+        <p>
+          Exactly <strong>2,997 participants</strong> (representing <strong>17,982 individual dynamometer trial measurements</strong>) completed all 3 trials on Hand 1 (<code>MGXH1T1–T3</code>) and all 3 trials on Hand 2 (<code>MGXH2T1–T3</code>) alongside valid sleep duration—matching published peer-reviewed NHANES benchmarks to the exact participant.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= 3. LIVE SUMMARY CARDS & CONTROLS ======================= -->
+  <section id="explorer" class="section-block">
+    <span class="section-kicker">Section 2 · Interactive Analytical Dashboard</span>
+    <h2 class="section-heading">The Sleep &amp; Strength Explorer</h2>
+    <p class="section-lead">
+      Use the interactive controls below to filter the cohort by sample definition, sex, sleep-duration range, age range, physical activity, and custom sleep-category boundaries. All five summary cards, the 2D density heatmap, the sleep-category violin/box distributions, the statistical summary table, and the demographic comparisons update instantaneously.
+    </p>
+
+    <!-- 5 KPI SUMMARY CARDS -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Analytical Cohort Size</div>
+        <div class="kpi-value"><span id="kpi-total-cohort">3,014</span><span class="unit">adults</span></div>
+        <div class="kpi-sub" id="kpi-cohort-sub">Primary Sample (3,632 aged &ge;60)</div>
+      </div>
+      <div class="kpi-card highlight">
+        <div class="kpi-label">Active Filtered Sample</div>
+        <div class="kpi-value"><span id="kpi-filtered-n">3,014</span><span class="unit" id="kpi-filtered-pct">(100.0%)</span></div>
+        <div class="kpi-sub" id="kpi-sex-breakdown">1,477 Male · 1,537 Female</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Average Sleep Duration</div>
+        <div class="kpi-value"><span id="kpi-mean-sleep">7.05</span><span class="unit">hrs/night</span></div>
+        <div class="kpi-sub" id="kpi-sleep-sub">Survey-Weighted: 7.18 hrs · Median: 7.0 hrs</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Mean Combined Grip</div>
+        <div class="kpi-value"><span id="kpi-mean-grip">59.96</span><span class="unit">kg</span></div>
+        <div class="kpi-sub" id="kpi-grip-wt-sub">Survey-Weighted: 60.91 kg (SD: 19.61)</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Median Combined Grip</div>
+        <div class="kpi-value"><span id="kpi-median-grip">56.80</span><span class="unit">kg</span></div>
+        <div class="kpi-sub" id="kpi-grip-iqr-sub">IQR: 28.20 kg (45.6–73.8 kg)</div>
+      </div>
+    </div>
+
+    <!-- INTERACTIVE FILTER CONTROL PANEL -->
+    <div class="control-panel">
+      <div class="control-panel-header">
+        <div class="control-panel-title">
+          <span>⚙️ Interactive Cohort &amp; Sleep-Boundary Controls</span>
+        </div>
+        <button type="button" class="btn-reset" id="btn-reset-filters">Reset All Controls to Default</button>
+      </div>
+
+      <div class="control-grid">
+        <!-- Control 1: Sample & Sex -->
+        <div class="control-group">
+          <label for="select-cohort">
+            <span>1. Analytical Cohort &amp; Sex</span>
+            <span class="val-badge" id="badge-cohort">Primary (3,014)</span>
+          </label>
+          <select id="select-cohort" class="control-select" style="margin-bottom:0.45rem;">
+            <option value="primary" selected>Primary Paired Sample (n = 3,014)</option>
+            <option value="all6">Complete 6-Trial Sample (n = 2,997)</option>
+          </select>
+          <select id="select-sex" class="control-select">
+            <option value="All" selected>All Sexes (Male &amp; Female)</option>
+            <option value="Male">Male Only (RIAGENDR = 1)</option>
+            <option value="Female">Female Only (RIAGENDR = 2)</option>
+          </select>
+          <div class="control-help">Filter by NHANES sample definition and biological sex.</div>
+        </div>
+
+        <!-- Control 2: Sleep Duration Range -->
+        <div class="control-group">
+          <label>
+            <span>2. Sleep Duration Range</span>
+            <span class="val-badge" id="badge-sleep-range">2 – 12 hrs</span>
+          </label>
+          <div class="dual-input-row">
+            <span style="font-size:0.75rem;color:#94a3b8;">Min</span>
+            <input type="range" id="slider-sleep-min" min="2" max="12" step="1" value="2">
+            <span style="font-size:0.75rem;color:#94a3b8;">Max</span>
+            <input type="range" id="slider-sleep-max" min="2" max="12" step="1" value="12">
+          </div>
+          <div class="control-help">Adjust weekday/workday sleep window (<code>SLD010H</code>, 2–12 hrs).</div>
+        </div>
+
+        <!-- Control 3: Age Range & Activity -->
+        <div class="control-group">
+          <label>
+            <span>3. Age Window &amp; Activity</span>
+            <span class="val-badge" id="badge-age-range">60 – 80 yrs</span>
+          </label>
+          <div class="dual-input-row" style="margin-bottom:0.45rem;">
+            <span style="font-size:0.75rem;color:#94a3b8;">Min</span>
+            <input type="range" id="slider-age-min" min="60" max="80" step="1" value="60">
+            <span style="font-size:0.75rem;color:#94a3b8;">Max</span>
+            <input type="range" id="slider-age-max" min="60" max="80" step="1" value="80">
+          </div>
+          <select id="select-activity" class="control-select">
+            <option value="All" selected>All Activity Levels</option>
+            <option value="Active (Mod/Vig)">Physically Active (Mod/Vig Work or Rec)</option>
+            <option value="Inactive">Physically Inactive</option>
+          </select>
+        </div>
+
+        <!-- Control 4: Custom Sleep Category Thresholds -->
+        <div class="control-group">
+          <label>
+            <span>4. Sleep Category Thresholds</span>
+            <span class="val-badge" id="badge-cat-bounds">&lt;7h | 7–8h | &gt;8h</span>
+          </label>
+          <div class="dual-input-row" style="margin-bottom:0.35rem;">
+            <span style="font-size:0.75rem;color:#94a3b8;min-width:68px;">Lower &lt;</span>
+            <input type="range" id="slider-bound-low" min="4" max="8" step="1" value="7">
+          </div>
+          <div class="dual-input-row">
+            <span style="font-size:0.75rem;color:#94a3b8;min-width:68px;">Higher &gt;</span>
+            <input type="range" id="slider-bound-high" min="6" max="10" step="1" value="8">
+          </div>
+          <div class="control-help">Recalculates Lower, Moderate, and Higher sleep groups dynamically.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- VISUALIZATION 1: 2D BINNED DENSITY HEATMAP -->
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <h3 class="chart-card-title">1. Two-Dimensional Sleep &amp; Grip-Strength Density Heatmap</h3>
+          <p class="chart-card-subtitle">
+            Each cell displays the exact number of unique older adults within that sleep-hour and 10-kg combined grip-strength bin. Overlaid trajectories show unweighted and 4-year survey-weighted (<code>WTMEC4YR</code>) mean combined grip strength across sleep durations.
+          </p>
+        </div>
+        <span class="chart-tag" id="heatmap-tag">Displaying n = 3,014 Unique Participants</span>
+      </div>
+      <div id="heatmap-plot" style="width:100%;height:540px;"></div>
+    </div>
+  </section>
+
+  <!-- ======================= 4. SLEEP CATEGORY COMPARISON ======================= -->
+  <section id="categories" class="section-block">
+    <span class="section-kicker">Section 3 · Distribution &amp; Threshold Analysis</span>
+    <h2 class="section-heading">Low, Moderate, and High Sleep Category Comparison</h2>
+    <p class="section-lead">
+      Compare the full distribution of combined handgrip strength across Lower, Moderate, and Higher sleep-duration categories using kernel density violins, embedded median/interquartile box plots, and mean markers. Adjust the category boundaries in the control panel above to test how different clinical cutoffs affect group differences.
+    </p>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <h3 class="chart-card-title">2. Combined Grip Strength Distributions Across Sleep Duration Categories</h3>
+          <p class="chart-card-subtitle">
+            Interactive violin plots with embedded box plots (median, Q1–Q3 interquartile range, and whiskers) and mean diamonds.
+          </p>
+        </div>
+        <span class="chart-tag" id="violin-tag">Cutoffs: Lower (&lt;7h) · Moderate (7–8h) · Higher (&gt;8h)</span>
+      </div>
+      <div id="violin-plot" style="width:100%;height:480px;"></div>
+
+      <div class="stats-table-wrap">
+        <table class="stats-table">
+          <thead>
+            <tr>
+              <th>Sleep Duration Category</th>
+              <th>Unweighted Participants (n, %)</th>
+              <th>Weighted U.S. Share (%)</th>
+              <th>Unweighted Mean &plusmn; SD (kg)</th>
+              <th>Weighted Mean (kg)</th>
+              <th>Median Grip (kg)</th>
+              <th>IQR (Q1–Q3, kg)</th>
+              <th>Min – Max (kg)</th>
+            </tr>
+          </thead>
+          <tbody id="category-stats-tbody">
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= 5. AGE & SEX DEMOGRAPHIC COMPARISONS ======================= -->
+  <section id="demographics" class="section-block">
+    <span class="section-kicker">Section 4 · Subgroup &amp; Survey-Weight Stratification</span>
+    <h2 class="section-heading">Age Group, Sex, and Survey-Weighted Comparisons</h2>
+    <p class="section-lead">
+      Handgrip strength differs strongly between men and women and declines steeply between ages 60 and 80+, while older seniors also report longer sleep durations. Exploring age- and sex-stratified distributions is essential to separate biological confounding from within-group sleep-and-strength patterns.
+    </p>
+
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div>
+          <h3 class="chart-card-title">3. Stratified Strength Profiles by Age Decade, Sex, and Survey Weighting</h3>
+          <p class="chart-card-subtitle">
+            Switch views to inspect (A) Mean Combined Grip Strength by Age Group &amp; Sleep Category, (B) Sex-Stratified Violin/Box Distributions by Sleep Category, or (C) Unweighted vs. Complex Survey-Weighted (<code>WTMEC4YR</code>) Trajectory by Sleep Hour.
+          </p>
+        </div>
+        <div style="min-width:290px;">
+          <select id="select-demo-view" class="control-select">
+            <option value="age_sleep" selected>View A: Age Group &times; Sleep Category (Mean &plusmn; SE)</option>
+            <option value="sex_sleep">View B: Sex &times; Sleep Category Box/Violin Distributions</option>
+            <option value="weighted_curve">View C: Unweighted vs. Survey-Weighted Mean by Hour</option>
+          </select>
+        </div>
+      </div>
+      <div id="demographic-plot" style="width:100%;height:480px;"></div>
+    </div>
+  </section>
+
+  <!-- ======================= 6. KEY FINDINGS FROM ACTUAL DATA ======================= -->
+  <section id="findings" class="section-block">
+    <span class="section-kicker">Section 5 · Empirical Synthesis &amp; Analytical Rigor</span>
+    <h2 class="section-heading">Key Findings Derived from the NHANES 2011–2014 Data</h2>
+    <p class="section-lead">
+      All numerical findings below are computed directly from the 3,014 older adults in the merged CDC NHANES 2011–2012 and 2013–2014 examination files.
+    </p>
+
+    <div class="info-grid-2">
+      <div class="info-card">
+        <span class="card-kicker">Finding 1 · Peak Strength at 7 Hours of Sleep</span>
+        <h3>Non-Linear (Inverted-U) Sleep &amp; Grip Relationship</h3>
+        <p>
+          Across the full cohort (<em>n</em> = 3,014), combined handgrip strength peaks among older adults reporting <strong>7 hours of sleep per night</strong> (<em>n</em> = 758; unweighted mean = <strong>62.53 kg</strong>, median = <strong>59.20 kg</strong>, survey-weighted mean = <strong>63.52 kg</strong>). Strength is lower both among very short sleepers (<strong>&le;4 hours</strong>, <em>n</em> = 147; unweighted mean = <strong>58.87 kg</strong>, weighted mean = <strong>57.76 kg</strong>) and among long sleepers (<strong>&gt;8 hours</strong>, <em>n</em> = 344; unweighted mean = <strong>55.15 kg</strong>, median = <strong>52.85 kg</strong>, weighted mean = <strong>55.52 kg</strong>).
+        </p>
+      </div>
+
+      <div class="info-card">
+        <span class="card-kicker">Finding 2 · Pronounced Deficit in Long Sleepers (&gt;8 Hours)</span>
+        <h3>5.3 to 6.4 kg Lower Strength in Extended Sleepers</h3>
+        <p>
+          Older adults sleeping <strong>more than 8 hours per night</strong> (<em>n</em> = 344; 11.4% unweighted, 11.7% weighted) exhibit an unweighted mean combined grip strength of <strong>55.15 kg</strong> compared with <strong>60.47 kg</strong> in the recommended <strong>7–8 hour</strong> group (<em>n</em> = 1,649)—a difference of <strong>&minus;5.32 kg unweighted</strong> and <strong>&minus;6.35 kg survey-weighted</strong> (55.52 kg vs. 61.87 kg). At 10 hours of sleep (<em>n</em> = 101), mean combined grip strength drops further to <strong>51.59 kg</strong> (median 47.30 kg).
+        </p>
+      </div>
+
+      <div class="info-card purple-accent">
+        <span class="card-kicker">Finding 3 · Demographic Confounding by Age &amp; Sex</span>
+        <h3>Why Age and Sex Stratification Matters</h3>
+        <p>
+          In unadjusted comparisons, short sleepers (&lt;7h) appear similar in overall mean grip strength (<strong>60.77 kg</strong>) to 7–8h sleepers (<strong>60.47 kg</strong>) because <strong>younger seniors (ages 60–69, <em>n</em> = 1,558)</strong> sleep less on average (<strong>6.86 hrs</strong>) and are substantially stronger (mean = <strong>65.17 kg</strong>) than <strong>oldest-old adults (ages 80+, <em>n</em> = 549)</strong>, who sleep longer (<strong>7.47 hrs</strong>) and have lower grip strength (mean = <strong>48.62 kg</strong>). Yet within both males (67.5 kg at &gt;8h vs. 73.9 kg at 7–8h) and females (43.5 kg at &gt;8h vs. 46.8 kg at 7–8h), long sleep remains consistently associated with weaker grip strength.
+        </p>
+      </div>
+
+      <div class="info-card amber-accent">
+        <span class="card-kicker">Finding 4 · Survey-Weighted vs. Unweighted Estimates</span>
+        <h3>Accounting for NHANES Complex Sampling Design</h3>
+        <p>
+          Because NHANES oversamples older adults and specific racial/ethnic subgroups, applying the 4-year combined MEC weight (<code>WTMEC4YR = WTMEC2YR / 2</code>) with Taylor-series linearization across <strong>28 masked variance strata (<code>SDMVSTRA</code>)</strong> and <strong>61 primary sampling units (<code>SDMVPSU</code>)</strong> shifts the estimated population mean sleep duration from <strong>7.05 hrs (unweighted)</strong> to <strong>7.18 &plusmn; 0.03 hrs (weighted)</strong>, and shifts mean combined grip strength from <strong>59.96 kg (unweighted)</strong> to <strong>60.91 &plusmn; 0.62 kg (weighted)</strong>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= 7. METHODOLOGY & LIMITATIONS ======================= -->
+  <section class="section-block">
+    <span class="section-kicker">Section 6 · Study Design &amp; Critical Caveats</span>
+    <h2 class="section-heading">Methodology &amp; Statistical Limitations</h2>
+    <p class="section-lead">
+      Rigorous observational research requires transparent reporting of measurement protocols, complex survey weighting, and structural limitations.
+    </p>
+
+    <div class="info-grid-3">
+      <div class="info-card">
+        <span class="card-kicker">1. Observational &amp; Cross-Sectional</span>
+        <h3>No Causal Claims</h3>
+        <p>
+          NHANES is a cross-sectional survey measured at a single point in time per participant. <strong>Correlation does not imply causation:</strong> we cannot conclude that sleeping longer or shorter <em>causes</em> muscle weakness. Reverse causation and underlying health status (e.g., subclinical frailty, cardiovascular disease, depression, or systemic inflammation) may simultaneously increase habitual time spent asleep and reduce neuromuscular strength.
+        </p>
+      </div>
+
+      <div class="info-card">
+        <span class="card-kicker">2. Exposure &amp; Top-Coding Constraints</span>
+        <h3>Self-Reported Integer Sleep &amp; Age 80+ Censoring</h3>
+        <p>
+          Sleep duration (<code>SLD010H</code>) is self-reported in whole hours for weekdays/workdays rather than measured via wrist actigraphy or polysomnography, and does not capture sleep fragmentation, sleep apnea, or daytime napping. Furthermore, CDC top-codes <code>SLD010H</code> at <strong>12 hours</strong> and top-codes age (<code>RIDAGEYR</code>) at <strong>80 years</strong> to protect respondent confidentiality.
+        </p>
+      </div>
+
+      <div class="info-card">
+        <span class="card-kicker">3. Biomechanical Protocol &amp; Sampling</span>
+        <h3>Dynamometer Trials &amp; Survey Weights</h3>
+        <p>
+          Grip strength was measured in kilograms using a Takei Digital Grip Strength Dynamometer across 3 alternating trials per hand with a 60-second rest interval. <code>MGDCGSZ</code> sums the maximum reading from each hand. While 3,014 participants completed bilateral testing, 606 older adults with valid sleep data lacked bilateral grip scores (due to non-attendance at the MEC, bilateral hand surgery/paralysis, or completing only one hand).
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======================= 8. DATA SOURCES & CITATIONS ======================= -->
+  <section id="citations" class="section-block">
+    <span class="section-kicker">Section 7 · Provenance &amp; Reproducibility</span>
+    <h2 class="section-heading">Official CDC Data Sources &amp; Citations</h2>
+    <div class="info-card">
+      <span class="card-kicker">Primary Public-Domain Federal Data Source</span>
+      <h3>Centers for Disease Control and Prevention (CDC) · National Center for Health Statistics (NCHS)</h3>
+      <ul>
+        <li>
+          <strong>NHANES Continuous Survey Portal:</strong> Centers for Disease Control and Prevention (CDC), National Center for Health Statistics (NCHS). <em>National Health and Nutrition Examination Survey Data (2011–2012 and 2013–2014 Cycles)</em>. Hyattsville, MD: U.S. Department of Health and Human Services. <a href="https://wwwn.cdc.gov/nchs/nhanes/continuousnhanes/" target="_blank" rel="noopener">https://wwwn.cdc.gov/nchs/nhanes/continuousnhanes/</a>
+        </li>
+        <li>
+          <strong>2011–2012 Cycle (Series G) SAS Transport Files:</strong>
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2011/DataFiles/DEMO_G.xpt" target="_blank" rel="noopener">DEMO_G.xpt</a> (Demographics),
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2011/DataFiles/SLQ_G.xpt" target="_blank" rel="noopener">SLQ_G.xpt</a> (Sleep Disorders),
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2011/DataFiles/MGX_G.xpt" target="_blank" rel="noopener">MGX_G.xpt</a> (Muscle Strength – Grip Test),
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2011/DataFiles/BMX_G.xpt" target="_blank" rel="noopener">BMX_G.xpt</a> (Body Measures),
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2011/DataFiles/PAQ_G.xpt" target="_blank" rel="noopener">PAQ_G.xpt</a> (Physical Activity).
+        </li>
+        <li>
+          <strong>2013–2014 Cycle (Series H) SAS Transport Files:</strong>
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2013/DataFiles/DEMO_H.xpt" target="_blank" rel="noopener">DEMO_H.xpt</a> (Demographics),
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2013/DataFiles/SLQ_H.xpt" target="_blank" rel="noopener">SLQ_H.xpt</a> (Sleep Disorders),
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2013/DataFiles/MGX_H.xpt" target="_blank" rel="noopener">MGX_H.xpt</a> (Muscle Strength – Grip Test),
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2013/DataFiles/BMX_H.xpt" target="_blank" rel="noopener">BMX_H.xpt</a> (Body Measures),
+          <a href="https://wwwn.cdc.gov/Nchs/Data/Nhanes/Public/2013/DataFiles/PAQ_H.xpt" target="_blank" rel="noopener">PAQ_H.xpt</a> (Physical Activity).
+        </li>
+        <li>
+          <strong>NHANES Analytic Guidelines (Combining 2-Year Cycles):</strong> Johnson CL, Paulose-Ram R, Ogden CL, et al. <em>National Health and Nutrition Examination Survey: Analytic guidelines, 1999–2010</em>. National Center for Health Statistics. Vital Health Stat 2(161). 2013. (Four-year MEC weights constructed as <code>WTMEC4YR = WTMEC2YR / 2</code>).
+        </li>
+      </ul>
+    </div>
+  </section>
+
+</div>
+```
+
+```{r}
+#| label: inject-data-script
+#| results: asis
+
+cat(sprintf("<script id=\"nhanes-data-payload\" type=\"application/json\">%s</script>\n", json_payload))
+```
+
+```{=html}
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const rawPayload = document.getElementById("nhanes-data-payload").textContent;
+  const ALL_DATA = JSON.parse(rawPayload);
+
+  // Helper statistical functions
+  function mean(arr) {
+    if (!arr.length) return NaN;
+    let s = 0;
+    for (let i = 0; i < arr.length; i++) s += arr[i];
+    return s / arr.length;
+  }
+
+  function weightedMean(vals, wts) {
+    if (!vals.length) return NaN;
+    let sw = 0, swv = 0;
+    for (let i = 0; i < vals.length; i++) {
+      sw += wts[i];
+      swv += wts[i] * vals[i];
+    }
+    return sw > 0 ? swv / sw : NaN;
+  }
+
+  function sd(arr) {
+    if (arr.length < 2) return 0;
+    const m = mean(arr);
+    let s = 0;
+    for (let i = 0; i < arr.length; i++) {
+      const d = arr[i] - m;
+      s += d * d;
+    }
+    return Math.sqrt(s / (arr.length - 1));
+  }
+
+  function quantile(sortedArr, q) {
+    if (!sortedArr.length) return NaN;
+    const pos = (sortedArr.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    if (sortedArr[base + 1] !== undefined) {
+      return sortedArr[base] + rest * (sortedArr[base + 1] - sortedArr[base]);
+    }
+    return sortedArr[base];
+  }
+
+  function summaryStats(records) {
+    const n = records.length;
+    if (n === 0) {
+      return {
+        n: 0, meanGrip: NaN, sdGrip: NaN, wtMeanGrip: NaN,
+        medianGrip: NaN, q1Grip: NaN, q3Grip: NaN, iqrGrip: NaN,
+        minGrip: NaN, maxGrip: NaN,
+        meanSleep: NaN, wtMeanSleep: NaN, medianSleep: NaN,
+        wtSum: 0
+      };
+    }
+    const grips = records.map(r => r.grip);
+    const sleeps = records.map(r => r.sleep);
+    const wts = records.map(r => r.wt4yr);
+    const sortedGrips = [...grips].sort((a, b) => a - b);
+    const sortedSleeps = [...sleeps].sort((a, b) => a - b);
+    const q1 = quantile(sortedGrips, 0.25);
+    const med = quantile(sortedGrips, 0.50);
+    const q3 = quantile(sortedGrips, 0.75);
+    let wtSum = 0;
+    for (let i = 0; i < wts.length; i++) wtSum += wts[i];
+
+    return {
+      n: n,
+      meanGrip: mean(grips),
+      sdGrip: sd(grips),
+      wtMeanGrip: weightedMean(grips, wts),
+      medianGrip: med,
+      q1Grip: q1,
+      q3Grip: q3,
+      iqrGrip: q3 - q1,
+      minGrip: sortedGrips[0],
+      maxGrip: sortedGrips[sortedGrips.length - 1],
+      meanSleep: mean(sleeps),
+      wtMeanSleep: weightedMean(sleeps, wts),
+      medianSleep: quantile(sortedSleeps, 0.50),
+      wtSum: wtSum
+    };
+  }
+
+  // DOM Control References
+  const elCohort = document.getElementById("select-cohort");
+  const elSex = document.getElementById("select-sex");
+  const elSleepMin = document.getElementById("slider-sleep-min");
+  const elSleepMax = document.getElementById("slider-sleep-max");
+  const elAgeMin = document.getElementById("slider-age-min");
+  const elAgeMax = document.getElementById("slider-age-max");
+  const elActivity = document.getElementById("select-activity");
+  const elBoundLow = document.getElementById("slider-bound-low");
+  const elBoundHigh = document.getElementById("slider-bound-high");
+  const elDemoView = document.getElementById("select-demo-view");
+  const btnReset = document.getElementById("btn-reset-filters");
+
+  function syncSliders(changed) {
+    let sMin = parseInt(elSleepMin.value, 10);
+    let sMax = parseInt(elSleepMax.value, 10);
+    if (sMin > sMax) {
+      if (changed === elSleepMin) { sMax = sMin; elSleepMax.value = sMax; }
+      else { sMin = sMax; elSleepMin.value = sMin; }
+    }
+
+    let aMin = parseInt(elAgeMin.value, 10);
+    let aMax = parseInt(elAgeMax.value, 10);
+    if (aMin > aMax) {
+      if (changed === elAgeMin) { aMax = aMin; elAgeMax.value = aMax; }
+      else { aMin = aMax; elAgeMin.value = aMin; }
+    }
+
+    let bLow = parseInt(elBoundLow.value, 10);
+    let bHigh = parseInt(elBoundHigh.value, 10);
+    if (bLow > bHigh) {
+      if (changed === elBoundLow) { bHigh = bLow; elBoundHigh.value = bHigh; }
+      else { bLow = bHigh; elBoundLow.value = bLow; }
+    }
+  }
+
+  function classifySleep(hrs, bLow, bHigh) {
+    if (hrs < bLow) return "Lower";
+    if (hrs <= bHigh) return "Moderate";
+    return "Higher";
+  }
+
+  function updateDashboard(changedEl) {
+    if (changedEl) syncSliders(changedEl);
+
+    const cohortMode = elCohort.value;
+    const sexFilter = elSex.value;
+    const sleepMin = parseInt(elSleepMin.value, 10);
+    const sleepMax = parseInt(elSleepMax.value, 10);
+    const ageMin = parseInt(elAgeMin.value, 10);
+    const ageMax = parseInt(elAgeMax.value, 10);
+    const activityFilter = elActivity.value;
+    const boundLow = parseInt(elBoundLow.value, 10);
+    const boundHigh = parseInt(elBoundHigh.value, 10);
+    const demoView = elDemoView.value;
+
+    const lowLabel = `Lower Sleep (<${boundLow}h)`;
+    const modLabel = boundLow === boundHigh ? `Moderate Sleep (${boundLow}h)` : `Moderate Sleep (${boundLow}–${boundHigh}h)`;
+    const highLabel = `Higher Sleep (>${boundHigh}h)`;
+
+    // Update control badges
+    const baseCohort = cohortMode === "all6" ? ALL_DATA.filter(d => d.all6) : ALL_DATA;
+    document.getElementById("badge-cohort").textContent = cohortMode === "all6" ? "6-Trial (2,997)" : "Primary (3,014)";
+    document.getElementById("badge-sleep-range").textContent = `${sleepMin} – ${sleepMax} hrs`;
+    document.getElementById("badge-age-range").textContent = `${ageMin} – ${ageMax}${ageMax === 80 ? "+" : ""} yrs`;
+    document.getElementById("badge-cat-bounds").textContent = `<${boundLow}h | ${boundLow}–${boundHigh}h | >${boundHigh}h`;
+
+    // Filter dataset
+    const filtered = baseCohort.filter(d => {
+      if (sexFilter !== "All" && d.sex !== sexFilter) return false;
+      if (d.sleep < sleepMin || d.sleep > sleepMax) return false;
+      if (d.age < ageMin || d.age > ageMax) return false;
+      if (activityFilter !== "All" && d.activity !== activityFilter) return false;
+      return true;
+    });
+
+    // Compute overall KPIs
+    const st = summaryStats(filtered);
+    const nMales = filtered.filter(d => d.sex === "Male").length;
+    const nFemales = filtered.filter(d => d.sex === "Female").length;
+    const pctCohort = baseCohort.length > 0 ? ((st.n / baseCohort.length) * 100).toFixed(1) : "0.0";
+
+    document.getElementById("kpi-total-cohort").textContent = baseCohort.length.toLocaleString();
+    document.getElementById("kpi-cohort-sub").textContent = cohortMode === "all6"
+      ? "Secondary Complete 6-Trial Sample"
+      : "Primary Sample (3,632 aged ≥60)";
+    document.getElementById("kpi-filtered-n").textContent = st.n.toLocaleString();
+    document.getElementById("kpi-filtered-pct").textContent = `(${pctCohort}%)`;
+    document.getElementById("kpi-sex-breakdown").textContent = `${nMales.toLocaleString()} Male · ${nFemales.toLocaleString()} Female`;
+
+    if (st.n > 0) {
+      document.getElementById("kpi-mean-sleep").textContent = st.meanSleep.toFixed(2);
+      document.getElementById("kpi-sleep-sub").textContent = `Survey-Weighted: ${st.wtMeanSleep.toFixed(2)} hrs · Median: ${st.medianSleep.toFixed(1)} hrs`;
+      document.getElementById("kpi-mean-grip").textContent = st.meanGrip.toFixed(2);
+      document.getElementById("kpi-grip-wt-sub").textContent = `Survey-Weighted: ${st.wtMeanGrip.toFixed(2)} kg (SD: ${st.sdGrip.toFixed(2)})`;
+      document.getElementById("kpi-median-grip").textContent = st.medianGrip.toFixed(2);
+      document.getElementById("kpi-grip-iqr-sub").textContent = `IQR: ${st.iqrGrip.toFixed(2)} kg (${st.q1Grip.toFixed(1)}–${st.q3Grip.toFixed(1)} kg)`;
+    } else {
+      document.getElementById("kpi-mean-sleep").textContent = "—";
+      document.getElementById("kpi-sleep-sub").textContent = "No matching participants";
+      document.getElementById("kpi-mean-grip").textContent = "—";
+      document.getElementById("kpi-grip-wt-sub").textContent = "Adjust filters above";
+      document.getElementById("kpi-median-grip").textContent = "—";
+      document.getElementById("kpi-grip-iqr-sub").textContent = "—";
+    }
+
+    document.getElementById("heatmap-tag").textContent = `Displaying n = ${st.n.toLocaleString()} Unique Participants`;
+    document.getElementById("violin-tag").textContent = `Cutoffs: ${lowLabel} · ${modLabel} · ${highLabel}`;
+
+    // =========================================================================
+    // CHART 1: 2D BINNED DENSITY HEATMAP + MEAN TRAJECTORY OVERLAY
+    // =========================================================================
+    const hoursAxis = [];
+    for (let h = sleepMin; h <= sleepMax; h++) hoursAxis.push(h);
+
+    const gripBins = [
+      { min: 10, max: 20, label: "10–20 kg", mid: 15 },
+      { min: 20, max: 30, label: "20–30 kg", mid: 25 },
+      { min: 30, max: 40, label: "30–40 kg", mid: 35 },
+      { min: 40, max: 50, label: "40–50 kg", mid: 45 },
+      { min: 50, max: 60, label: "50–60 kg", mid: 55 },
+      { min: 60, max: 70, label: "60–70 kg", mid: 65 },
+      { min: 70, max: 80, label: "70–80 kg", mid: 75 },
+      { min: 80, max: 90, label: "80–90 kg", mid: 85 },
+      { min: 90, max: 100, label: "90–100 kg", mid: 95 },
+      { min: 100, max: 110, label: "100–110 kg", mid: 105 },
+      { min: 110, max: 120, label: "110–120 kg", mid: 115 },
+      { min: 120, max: 130, label: "120–130 kg", mid: 125 }
+    ];
+
+    const zMatrix = [];
+    const textMatrix = [];
+    const customMatrix = [];
+
+    for (let b = 0; b < gripBins.length; b++) {
+      const bin = gripBins[b];
+      const zRow = [];
+      const textRow = [];
+      const customRow = [];
+
+      for (let hIdx = 0; hIdx < hoursAxis.length; hIdx++) {
+        const hr = hoursAxis[hIdx];
+        const cellRecs = filtered.filter(d => {
+          const inHour = d.sleep === hr;
+          const inGrip = b === gripBins.length - 1
+            ? (d.grip >= bin.min && d.grip <= bin.max)
+            : (d.grip >= bin.min && d.grip < bin.max);
+          return inHour && inGrip;
+        });
+
+        const count = cellRecs.length;
+        const pctSample = st.n > 0 ? ((count / st.n) * 100).toFixed(2) : "0.00";
+        const cellMean = count > 0 ? mean(cellRecs.map(r => r.grip)).toFixed(1) + " kg" : "N/A";
+        let cellWtSum = 0;
+        for (let k = 0; k < cellRecs.length; k++) cellWtSum += cellRecs[k].wt4yr;
+        const pctWeighted = st.wtSum > 0 ? ((cellWtSum / st.wtSum) * 100).toFixed(2) : "0.00";
+
+        zRow.push(count);
+        textRow.push(count > 0 ? String(count) : "");
+        customRow.push([bin.label, pctSample, pctWeighted, cellMean]);
+      }
+      zMatrix.push(zRow);
+      textMatrix.push(textRow);
+      customMatrix.push(customRow);
+    }
+
+    // Hour-by-hour mean grip lines mapped to the middle of each 10-kg band
+    const hourlyMeansUnw = [];
+    const hourlyMeansWt = [];
+    const hourlyCounts = [];
+    for (let hIdx = 0; hIdx < hoursAxis.length; hIdx++) {
+      const hr = hoursAxis[hIdx];
+      const hRecs = filtered.filter(d => d.sleep === hr);
+      hourlyCounts.push(hRecs.length);
+      if (hRecs.length > 0) {
+        hourlyMeansUnw.push(mean(hRecs.map(r => r.grip)));
+        hourlyMeansWt.push(weightedMean(hRecs.map(r => r.grip), hRecs.map(r => r.wt4yr)));
+      } else {
+        hourlyMeansUnw.push(null);
+        hourlyMeansWt.push(null);
+      }
+    }
+
+    const heatmapTrace = {
+      x: hoursAxis,
+      y: gripBins.map(b => b.mid),
+      z: zMatrix,
+      text: textMatrix,
+      texttemplate: "%{text}",
+      textfont: { color: "#f8fafc", size: 11, family: "Inter, sans-serif" },
+      customdata: customMatrix,
+      type: "heatmap",
+      ygap: 2,
+      xgap: 2,
+      colorscale: [
+        [0.0, "#091526"],
+        [0.08, "#0f2c4c"],
+        [0.25, "#155e75"],
+        [0.50, "#0d9488"],
+        [0.75, "#2dd4bf"],
+        [1.0, "#facc15"]
+      ],
+      colorbar: {
+        title: { text: "Participants (n)", font: { color: "#e2e8f0", size: 12 } },
+        tickfont: { color: "#cbd5e1" }
+      },
+      hovertemplate:
+        "<b>Sleep Duration:</b> %{x} hours/night<br>" +
+        "<b>Grip Strength Bin:</b> %{customdata[0]}<br>" +
+        "<b>Participants in Bin:</b> %{z} (%{customdata[1]}% of filtered sample)<br>" +
+        "<b>Survey-Weighted Share:</b> %{customdata[2]}%<br>" +
+        "<b>Bin Mean Grip:</b> %{customdata[3]}<extra></extra>"
+    };
+
+    const unwLineTrace = {
+      x: hoursAxis,
+      y: hourlyMeansUnw,
+      customdata: hourlyCounts,
+      mode: "lines+markers",
+      name: "Unweighted Mean Grip (kg)",
+      line: { color: "#38bdf8", width: 3 },
+      marker: { color: "#38bdf8", size: 9, line: { color: "#07111f", width: 1.5 } },
+      hovertemplate:
+        "<b>Sleep Duration:</b> %{x} hrs (n = %{customdata})<br>" +
+        "<b>Unweighted Mean Grip:</b> %{y:.2f} kg<extra></extra>"
+    };
+
+    const wtLineTrace = {
+      x: hoursAxis,
+      y: hourlyMeansWt,
+      customdata: hourlyCounts,
+      mode: "lines+markers",
+      name: "Survey-Weighted Mean Grip (kg)",
+      line: { color: "#c084fc", width: 2.5, dash: "dot" },
+      marker: { color: "#c084fc", size: 8, symbol: "diamond" },
+      hovertemplate:
+        "<b>Sleep Duration:</b> %{x} hrs (n = %{customdata})<br>" +
+        "<b>Weighted Mean Grip (WTMEC4YR):</b> %{y:.2f} kg<extra></extra>"
+    };
+
+    const heatmapLayout = {
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "#091526",
+      font: { family: "Inter, Segoe UI, sans-serif", color: "#e2e8f0" },
+      margin: { t: 40, r: 30, b: 60, l: 75 },
+      xaxis: {
+        title: { text: "Self-Reported Weekday/Workday Sleep Duration (hours/night)", font: { size: 13 } },
+        tickmode: "linear",
+        dtick: 1,
+        gridcolor: "rgba(148,163,184,0.12)",
+        zeroline: false
+      },
+      yaxis: {
+        title: { text: "Combined Handgrip Strength (MGDCGSZ, kg)", font: { size: 13 } },
+        tickvals: gripBins.map(b => b.mid),
+        ticktext: gripBins.map(b => b.label),
+        gridcolor: "rgba(148,163,184,0.12)",
+        zeroline: false
+      },
+      legend: {
+        orientation: "h",
+        x: 0,
+        y: 1.09,
+        bgcolor: "rgba(15,30,52,0.75)",
+        font: { size: 12 }
+      }
+    };
+
+    Plotly.react("heatmap-plot", [heatmapTrace, unwLineTrace, wtLineTrace], heatmapLayout, {
+      responsive: true,
+      displayModeBar: false
+    });
+
+    // =========================================================================
+    // CHART 2: VIOLIN + EMBEDDED BOX PLOT ACROSS SLEEP CATEGORIES + TABLE
+    // =========================================================================
+    const catDefs = [
+      { key: "Lower", label: lowLabel, color: "#38bdf8", fill: "rgba(56, 189, 248, 0.28)" },
+      { key: "Moderate", label: modLabel, color: "#2dd4bf", fill: "rgba(45, 212, 191, 0.28)" },
+      { key: "Higher", label: highLabel, color: "#a855f7", fill: "rgba(168, 85, 247, 0.28)" }
+    ];
+
+    const violinTraces = [];
+    const tbody = document.getElementById("category-stats-tbody");
+    tbody.innerHTML = "";
+
+    catDefs.forEach(cat => {
+      const catRecs = filtered.filter(d => classifySleep(d.sleep, boundLow, boundHigh) === cat.key);
+      const cst = summaryStats(catRecs);
+      const pctUnw = st.n > 0 ? ((cst.n / st.n) * 100).toFixed(1) : "0.0";
+      const pctWt = st.wtSum > 0 ? ((cst.wtSum / st.wtSum) * 100).toFixed(1) : "0.0";
+
+      violinTraces.push({
+        type: "violin",
+        name: `${cat.label} (n=${cst.n})`,
+        y: catRecs.map(r => r.grip),
+        box: { visible: true, width: 0.28, fillcolor: "rgba(7,17,31,0.85)", line: { color: "#ffffff", width: 1.5 } },
+        meanline: { visible: true, color: "#facc15", width: 2.5 },
+        line: { color: cat.color, width: 2 },
+        fillcolor: cat.fill,
+        points: "outliers",
+        jitter: 0.2,
+        marker: { size: 5, color: cat.color, opacity: 0.65 },
+        hoveron: "violins+points",
+        hovertemplate: `<b>${cat.label}</b><br>Combined Grip: %{y:.1f} kg<extra></extra>`
+      });
+
+      const tr = document.createElement("tr");
+      if (cst.n > 0) {
+        tr.innerHTML = `
+          <td><span class="cat-dot" style="background:${cat.color};"></span><strong>${cat.label}</strong></td>
+          <td>${cst.n.toLocaleString()} (${pctUnw}%)</td>
+          <td>${pctWt}%</td>
+          <td><strong>${cst.meanGrip.toFixed(2)}</strong> &plusmn; ${cst.sdGrip.toFixed(2)}</td>
+          <td>${cst.wtMeanGrip.toFixed(2)}</td>
+          <td><strong>${cst.medianGrip.toFixed(2)}</strong></td>
+          <td>${cst.iqrGrip.toFixed(2)} (${cst.q1Grip.toFixed(1)}–${cst.q3Grip.toFixed(1)})</td>
+          <td>${cst.minGrip.toFixed(1)} – ${cst.maxGrip.toFixed(1)}</td>
+        `;
+      } else {
+        tr.innerHTML = `
+          <td><span class="cat-dot" style="background:${cat.color};"></span><strong>${cat.label}</strong></td>
+          <td>0 (0.0%)</td><td>0.0%</td><td>—</td><td>—</td><td>—</td><td>—</td><td>—</td>
+        `;
+      }
+      tbody.appendChild(tr);
+    });
+
+    const violinLayout = {
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "#091526",
+      font: { family: "Inter, Segoe UI, sans-serif", color: "#e2e8f0" },
+      margin: { t: 30, r: 25, b: 55, l: 65 },
+      xaxis: {
+        title: { text: "User-Defined Sleep Duration Category (Yellow Dashed Line = Group Mean; White Box = Median & IQR)", font: { size: 12.5 } },
+        gridcolor: "rgba(148,163,184,0.1)"
+      },
+      yaxis: {
+        title: { text: "Combined Handgrip Strength (kg)", font: { size: 13 } },
+        gridcolor: "rgba(148,163,184,0.14)",
+        zeroline: false
+      },
+      showlegend: true,
+      legend: { orientation: "h", x: 0, y: 1.09, bgcolor: "rgba(15,30,52,0.75)" }
+    };
+
+    Plotly.react("violin-plot", violinTraces, violinLayout, {
+      responsive: true,
+      displayModeBar: false
+    });
+
+    // =========================================================================
+    // CHART 3: DEMOGRAPHIC & SURVEY-WEIGHTED SUBGROUP EXPLORER
+    // =========================================================================
+    const demoTraces = [];
+    let demoLayout = {
+      paper_bgcolor: "rgba(0,0,0,0)",
+      plot_bgcolor: "#091526",
+      font: { family: "Inter, Segoe UI, sans-serif", color: "#e2e8f0" },
+      margin: { t: 35, r: 25, b: 60, l: 65 },
+      legend: { orientation: "h", x: 0, y: 1.1, bgcolor: "rgba(15,30,52,0.75)" }
+    };
+
+    if (demoView === "age_sleep") {
+      const ageGroups = ["60-69 yrs", "70-79 yrs", "80+ yrs (Top-coded)"];
+      catDefs.forEach(cat => {
+        const yMeans = [];
+        const ySEs = [];
+        const customInfo = [];
+
+        ageGroups.forEach(ag => {
+          const sub = filtered.filter(
+            d => d.age_group === ag && classifySleep(d.sleep, boundLow, boundHigh) === cat.key
+          );
+          if (sub.length > 0) {
+            const m = mean(sub.map(r => r.grip));
+            const s = sd(sub.map(r => r.grip));
+            const se = sub.length > 1 ? s / Math.sqrt(sub.length) : 0;
+            const wm = weightedMean(sub.map(r => r.grip), sub.map(r => r.wt4yr));
+            const med = quantile(sub.map(r => r.grip).sort((a, b) => a - b), 0.5);
+            yMeans.push(m);
+            ySEs.push(se);
+            customInfo.push([sub.length, med.toFixed(1), wm.toFixed(1)]);
+          } else {
+            yMeans.push(0);
+            ySEs.push(0);
+            customInfo.push([0, "N/A", "N/A"]);
+          }
+        });
+
+        demoTraces.push({
+          type: "bar",
+          name: cat.label,
+          x: ageGroups,
+          y: yMeans,
+          customdata: customInfo,
+          marker: { color: cat.color, opacity: 0.88, line: { color: "#07111f", width: 1 } },
+          error_y: { type: "data", array: ySEs, visible: true, color: "#f8fafc", thickness: 1.5 },
+          hovertemplate:
+            `<b>%{x} · ${cat.label}</b><br>` +
+            "Unweighted Mean: %{y:.2f} kg (&plusmn;%{error_y.array:.2f} SE)<br>" +
+            "Survey-Weighted Mean: %{customdata[2]} kg<br>" +
+            "Median Grip: %{customdata[1]} kg<br>" +
+            "Participants: n = %{customdata[0]}<extra></extra>"
+        });
+      });
+
+      demoLayout.barmode = "group";
+      demoLayout.xaxis = {
+        title: { text: "Age Group (Years at Screening, Top-Coded at 80+)", font: { size: 13 } },
+        gridcolor: "rgba(148,163,184,0.1)"
+      };
+      demoLayout.yaxis = {
+        title: { text: "Mean Combined Handgrip Strength (kg ± SE)", font: { size: 13 } },
+        gridcolor: "rgba(148,163,184,0.14)",
+        zeroline: false
+      };
+    } else if (demoView === "sex_sleep") {
+      const sexConfigs = [
+        { sex: "Male", color: "#38bdf8", fill: "rgba(56,189,248,0.28)" },
+        { sex: "Female", color: "#c084fc", fill: "rgba(192,132,252,0.28)" }
+      ];
+
+      sexConfigs.forEach(sc => {
+        const sub = filtered.filter(d => d.sex === sc.sex);
+        if (sub.length > 0) {
+          demoTraces.push({
+            type: "box",
+            name: `${sc.sex} (n=${sub.length})`,
+            x: sub.map(r => {
+              const c = classifySleep(r.sleep, boundLow, boundHigh);
+              return c === "Lower" ? lowLabel : (c === "Moderate" ? modLabel : highLabel);
+            }),
+            y: sub.map(r => r.grip),
+            boxmean: true,
+            marker: { color: sc.color, size: 4 },
+            line: { color: sc.color, width: 2 },
+            fillcolor: sc.fill,
+            hovertemplate: `<b>${sc.sex} · %{x}</b><br>Combined Grip: %{y:.1f} kg<extra></extra>`
+          });
+        }
+      });
+
+      demoLayout.boxmode = "group";
+      demoLayout.xaxis = {
+        title: { text: "Sleep Duration Category Stratified by Biological Sex (Dashed Line = Mean, Solid Line = Median)", font: { size: 12.5 } },
+        categoryorder: "array",
+        categoryarray: [lowLabel, modLabel, highLabel],
+        gridcolor: "rgba(148,163,184,0.1)"
+      };
+      demoLayout.yaxis = {
+        title: { text: "Combined Handgrip Strength (kg)", font: { size: 13 } },
+        gridcolor: "rgba(148,163,184,0.14)",
+        zeroline: false
+      };
+    } else {
+      // View C: Unweighted vs Survey-Weighted Mean Trajectory by Sleep Hour & Sex
+      demoTraces.push({
+        type: "scatter",
+        mode: "lines+markers",
+        name: "Unweighted Sample Mean (kg)",
+        x: hoursAxis,
+        y: hourlyMeansUnw,
+        customdata: hourlyCounts,
+        line: { color: "#2dd4bf", width: 3 },
+        marker: { size: 9, color: "#2dd4bf" },
+        hovertemplate: "<b>%{x} hrs/night</b> (n=%{customdata})<br>Unweighted Mean: %{y:.2f} kg<extra></extra>"
+      });
+
+      demoTraces.push({
+        type: "scatter",
+        mode: "lines+markers",
+        name: "4-Year Survey-Weighted Mean (WTMEC4YR, kg)",
+        x: hoursAxis,
+        y: hourlyMeansWt,
+        customdata: hourlyCounts,
+        line: { color: "#a855f7", width: 3, dash: "dash" },
+        marker: { size: 9, symbol: "diamond", color: "#a855f7" },
+        hovertemplate: "<b>%{x} hrs/night</b> (n=%{customdata})<br>Survey-Weighted Mean: %{y:.2f} kg<extra></extra>"
+      });
+
+      demoLayout.xaxis = {
+        title: { text: "Self-Reported Weekday/Workday Sleep Duration (hours/night)", font: { size: 13 } },
+        tickmode: "linear",
+        dtick: 1,
+        gridcolor: "rgba(148,163,184,0.12)"
+      };
+      demoLayout.yaxis = {
+        title: { text: "Mean Combined Handgrip Strength (kg)", font: { size: 13 } },
+        gridcolor: "rgba(148,163,184,0.14)",
+        zeroline: false
+      };
+    }
+
+    Plotly.react("demographic-plot", demoTraces, demoLayout, {
+      responsive: true,
+      displayModeBar: false
+    });
+  }
+
+  // Attach Event Listeners
+  [elCohort, elSex, elSleepMin, elSleepMax, elAgeMin, elAgeMax, elActivity, elBoundLow, elBoundHigh, elDemoView].forEach(el => {
+    el.addEventListener("input", () => updateDashboard(el));
+    el.addEventListener("change", () => updateDashboard(el));
+  });
+
+  btnReset.addEventListener("click", () => {
+    elCohort.value = "primary";
+    elSex.value = "All";
+    elSleepMin.value = "2";
+    elSleepMax.value = "12";
+    elAgeMin.value = "60";
+    elAgeMax.value = "80";
+    elActivity.value = "All";
+    elBoundLow.value = "7";
+    elBoundHigh.value = "8";
+    elDemoView.value = "age_sleep";
+    updateDashboard(null);
+  });
+
+  // Initial render
+  updateDashboard(null);
+});
+</script>
+```
